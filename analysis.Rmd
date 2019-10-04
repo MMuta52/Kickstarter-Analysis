@@ -1,0 +1,440 @@
+---
+title: "*KICKSTARTER* ANALYSIS"
+author: "STAT 405/605 - Matthew Mutammara | Andrew Mike | Jessica Chen | Jake Flores"
+date: "Tuesday, April 16, 2019"
+output: ioslides_presentation
+runtime: shiny
+---
+
+```{r, message=FALSE, echo=FALSE}
+KICKDATA <- read.csv("data/Kickstarter_Sample.csv")
+KICKDATA$status = KICKDATA$state
+level_data <- read.csv("data/kickstarter_levels.csv")
+comment_table <- read.csv("data/comment_count.csv")
+library(ggplot2)
+library(jsonlite)
+library(stringr)
+library(dplyr)
+library(XML)
+library(gridExtra)
+library(grid)
+library(gridBase)
+library(knitr)
+library(viridisLite)
+library(viridis)
+library(packcircles)
+library(RSQLite)
+library(maps)
+options(warn = -1)
+us_states <- map_data("state")
+
+```
+
+## Introduction: What is *Kickstarter*?
+
+* *Kickstarter* is a funding platform for creative projects.
+      * Everything from films, games, and music to art, design, and technology. 
+      * Full of ambitious, innovative, and imaginative ideas that are brought to life through the direct          support of others.
+
+* Everything on *Kickstarter* must be a project with a clear goal, like making an album, a book, or a work of art. A project will eventually be completed, and something will be produced by it.
+
+## Introduction: What is *Kickstarter*?
+* *Kickstarter's* 'All or Nothing' Rule
+      * A creator can only collect the funds if the funding goal has been reached by the deadline. If the         goal is not reached in time, no money changes hands.
+      
+* Succesful campaigns are able to succesfully crowdsource all of the funding that they designate within the set timeframe
+
+* Failed campaigns were unable to gather enough support for their idea/product and the money is sent back to the public backers
+      
+## Our Data
+* Source: https://webrobots.io/kickstarter-datasets/
+* Rows: 2,553,392 campaigns
+* Columns: 37 variables
+    * Important columns:
+          * Category
+          * State
+          * Blurb
+          * urls
+* Timespan of Data: 2015 - 2019
+* Auxillary Data source:  https://github.com/nalamidi/Kickstarter-Predictive-Analysis/tree/master/Kickstarter
+
+    
+# The Question We Set Out To Answer:
+# What indicates whether a campaign will be successful or not?
+
+# Exploratory Data Analysis
+
+## State of Campaigns by Percentage
+<div style="margin-left:-50px; margin-top:-50px; width:80%; height:100%">
+```{r, echo=FALSE, fig.width=9, fig.height=6, fig.align='center'}
+oldpar <- par(mfrow=c(1,2))
+ggplot(data=KICKDATA, aes(x = state, fill = state)) +
+  geom_bar(aes(y = 100 * (..count..)/sum(..count..))) +
+  labs(x = 'State', y = 'Percent', fill = 'State') +
+  theme(text = element_text(size=16),
+        axis.text.x = element_text(angle = 40, hjust = 1))
+
+par(oldpar)
+```
+
+## Campaigns by Category
+<div style="margin-left:-25px; margin-top:0px; width:100%; height:100%">
+```{r, echo=FALSE, fig.width=9, fig.height=5, fig.align='center'}
+## Parse category JSON data
+parsed_category <- fromJSON(paste0('[',toString((na.omit(KICKDATA$category))),']'))
+
+KICKDATA$category <- mutate(parsed_category,
+                         slug = str_extract(slug, "[^/]+"))$slug
+
+ggplot(data=KICKDATA, aes(x = category, fill = category)) + 
+  geom_bar(aes(y = 100 * (..count..)/sum(..count..))) +
+  labs(title = 'Campaigns By Category',
+       x = 'Category',
+       y = 'Percent',
+       fill = 'Category') +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1),
+        text = element_text(size=16))
+```
+
+## Top 15 Categories 
+<div style = "margin-left:-40px; margin-top:-50px; width:80%;height:100%">
+```{r, echo=FALSE, fig.width=9, fig.height=6, fig.align='center',fig.show = 'hold'}
+oldpar <- par(mfrow=c(1,2))
+
+#Parse Category out 
+KICKDATA <- read.csv("data/Kickstarter_Sample.csv")
+KICKDATA$status = KICKDATA$state
+parsed_category <- fromJSON(paste0('[',toString((na.omit(KICKDATA$category))),']')) 
+KICKDATA$category <- mutate(parsed_category, slug = str_extract(slug, "[^/]+"))$slug
+
+categories <- KICKDATA$category
+
+#Relationship 1 : map category to state"successful" 
+se1 <- select(KICKDATA, category, state) 
+fi1<- filter(se1, state == "successful")
+new_fi1 <- fi1 %>% 
+  group_by(category) %>% 
+  summarise(successful=n())
+
+# Create data
+data_cate_succ=data.frame(group=new_fi1$category, value=new_fi1$successful) 
+
+# Generate the layout. sizetype can be area 
+packing <- circleProgressiveLayout(data_cate_succ$value, sizetype='area')
+
+data_pic_cate_succ = cbind(data_cate_succ,packing)
+#All the dots on the circle
+dat.gg <- circleLayoutVertices(packing)
+
+succ<-ggplot() + 
+  geom_polygon(data = dat.gg, 
+               aes(x, y, group = id, 
+                fill=as.factor(id)), 
+               colour = "black", alpha = 0.6) +
+  geom_text(data = data_pic_cate_succ, aes(x, y, label = group, size = value))+
+  scale_size_continuous(range = c(1,4)) +
+  labs(title = "Number of Successes") +
+  theme_void() +
+  theme(legend.position="none",
+        text = element_text(size=16)) + 
+  coord_equal()
+
+
+se2 <- select(KICKDATA, category, state)
+fi2<- filter(se2, state == "failed")
+new_fi2 <- fi2 %>% 
+  group_by(category) %>% 
+  summarise(failed=n())
+
+# Create data
+data_cate_fail=data.frame(group=new_fi2$category, value=new_fi2$failed) 
+
+# Generate the layout. sizetype can be area 
+packing <- circleProgressiveLayout(data_cate_fail$value, sizetype='area')
+
+data_pic_cate_fail = cbind(data_cate_fail,packing)
+#All the dots on the circle
+dat.gg <- circleLayoutVertices(packing)
+
+fail<- ggplot() + 
+  geom_polygon(data = dat.gg, 
+               aes(x, y, group = id, 
+                   fill=as.factor(id)), 
+               colour = "black", alpha = 0.6) +
+  geom_text(data = data_pic_cate_fail, aes(x, y, label = group, size = value))+
+  scale_size_continuous(range = c(1,4)) +
+  labs(title = "Number of Failures") +
+  theme_void() +
+  theme(legend.position="none",
+        text = element_text(size=16)) + 
+  coord_equal()
+grid.arrange(succ,fail,ncol = 2)
+par(oldpar)
+```
+
+# Geographic Distribution
+
+## Fundraising Goals by Country 
+<div style="margin-left:-25px; margin-top:0px; width:100%; height:100%">
+```{r, echo=FALSE, fig.width=8.7, fig.height=5.50, fig.align='center'}
+oldpar <- par(mfrow=c(1,2))
+
+newdata <- subset(KICKDATA, KICKDATA$goal<2500000)
+ggplot(KICKDATA) + geom_point(aes(x = country, y = goal),data = newdata) +
+     theme(axis.title.x = element_text( size=20))+
+      theme(axis.title.y = element_text( size=20))+
+  labs( x = 'Country', y = 'Goal (USD)')+
+  theme (text = element_text(size = 15))
+             
+par(oldpar)
+```
+
+---
+```{r, echo=FALSE}
+oldpar <- par(mfrow=c(1,2))
+## Plot of geographic locations (COUNTRIES)  (adjusted text size for presentation)
+COUNTRIES <- ggplot(data=KICKDATA, aes(x = country, fill = country)) +
+  geom_bar(aes(y = 100 * (..count..)/sum(..count..))) +
+  theme(plot.title = element_text( size=10))+
+    theme(axis.title.x = element_text( size=5))+
+      theme(axis.title.y = element_text( size=5))+
+       labs(title = 'Campaigns by Country',
+            x = 'Country',
+            y = 'Percent',
+            fill = 'Country')+
+              theme_dark(base_size = 15)
+
+## plot of geographic locations (Top 15 U.S. States)
+## Remove empty locations so they don't ruin the JSON format
+KICKDATA$location[KICKDATA$location == ''] <- NA
+parsed_location <- fromJSON(paste0('[',toString((na.omit(KICKDATA$location))),']'))
+## Filter for only US
+us_location <- subset(parsed_location, country == 'US')
+## Get frequency data to plot
+state_freq <- as.data.frame(sort(table(us_location$state), decreasing=T))
+
+#plot the locations (TOP15STATES) (adjust text size for presentation)
+TOP15STATES <- ggplot(top_n(state_freq, n=15, Freq),
+                      aes(x=Var1, y = Freq, fill=Var1)) +
+  geom_bar(stat="identity") +
+  theme(plot.title = element_text( size=8))+
+  theme(axis.title.x = element_text( size=5))+
+  theme(axis.title.y = element_text( size=5))+
+  labs(title = 'Campaigns by US State (Top 15)',
+       x = 'US State',
+       y = 'Number of Campaigns',
+       fill = 'State')+
+  theme_dark(base_size = 15)
+```
+
+<div style="margin-left:-50px; margin-top:-50px; width:80%; height:100%">
+```{r, echo=FALSE, fig.width=9.4, fig.height=7, fig.align='default'}
+#coninuation of code above to create the graphic
+# Clear prior grids
+grid.newpage()
+# graph the first layer (COUNTRIES)
+COUNTRIES
+# define viewports
+vp <- viewport(x = .42, y = 0.6, width = .65, height = .7)
+# print second layer to the plot
+print((TOP15STATES), vp = vp)
+par(oldpar)
+```
+
+## Reward Levels
+* Kickstarter campaigns offer different levels of rewards for backers who invest at different levels
+* Our secondary dataset included the number of levels offered by each campaign
+* Is there a relationship between the number of reward levels offered and campaign success?
+
+<img src="level.png" align="middle" height="264.66" width="218.66" />
+
+## How Reward Levels Impact Success
+<div style="margin-left:-10px; margin-right:-10px; margin-top:-25px; margin-bottom:15px; width:80%; height:100%">
+```{r, echo=FALSE, fig.width= 8.5, fig.height=6, fig.align='center'}
+## Note: width=9.3 and height=7.1 work with -50,-50 margins and 80% width, 100% height
+# KILLER PLOT CODE
+oldpar <- par(mfrow=c(1,2))
+## Parse the location from kickstarter project and map cities to frequency
+## Remove empty locations so they don't ruin the JSON format
+KICKDATA$location[KICKDATA$location == ''] <- NA
+parsed_location <- fromJSON(paste0('[',toString((na.omit(KICKDATA$location))),']'))
+
+## Filter for only US
+us_location <- subset(parsed_location, country == 'US')
+
+## Get level data by state:
+level_data['state'] <- sub('.*, ', '', level_data$location)
+level_data['state'] <- sapply(state.name[match(level_data$state,state.abb)],tolower)
+level_data <- level_data[!is.na(level_data$state),]
+state_level <- level_data %>% 
+  group_by(state) %>%
+  summarise(levels = mean(levels))
+
+state_level_long_lat <- merge(x=us_states, y=state_level,
+                             by.x = ('region'),
+                             by.y = ('state'),
+                             all.y = TRUE)
+state_level_long_lat <- state_level_long_lat[order(state_level_long_lat$order),]
+
+## Now subset by success/fail and do it again
+success <- level_data[level_data$status == 'successful',]
+fail <- level_data[level_data$status == 'failed',]
+
+success_level <- success %>% 
+  group_by(state) %>%
+  summarise(levels = mean(levels))
+
+fail_level <- fail %>% 
+  group_by(state) %>%
+  summarise(levels = mean(levels))
+
+difference_level <- data.frame(state=success_level$state,
+                               levels_difference = success_level$levels-fail_level$levels)
+
+success_level_long_lat <- merge(x=us_states, y=success_level,
+                              by.x = ('region'),
+                              by.y = ('state'),
+                              all.y = TRUE)
+fail_level_long_lat <- merge(x=us_states, y=fail_level,
+                                by.x = ('region'),
+                                by.y = ('state'),
+                                all.y = TRUE)
+
+difference_level_long_lat <- merge(x=us_states, y=difference_level,
+                             by.x = ('region'),
+                             by.y = ('state'),
+                             all.y = TRUE)
+
+success_level_long_lat <- success_level_long_lat[order(success_level_long_lat$order),]
+fail_level_long_lat <- fail_level_long_lat[order(fail_level_long_lat$order),]
+difference_level_long_lat <- difference_level_long_lat[order(difference_level_long_lat$order),]
+
+success_map <- ggplot() +
+  geom_polygon(data = success_level_long_lat, aes(x=long, y=lat, group=group, fill=levels))+
+  borders('state')+
+  scale_fill_gradient(low='white',high='blue',limits=c(5.5,9.99),name='Levels')+
+  ylim(25,50)+xlim(-126,-66)+
+  ggtitle('Levels in Successful Campaigns')+
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.justification='bottom',
+        plot.margin=unit(c(-0.5,1.25,0.5,0),"cm"))
+
+fail_map <- ggplot() +
+  geom_polygon(data = fail_level_long_lat, aes(x=long, y=lat, group=group, fill=levels))+
+  borders('state')+
+  scale_fill_gradient(low='white',high='blue',limits=c(5.5,9.99),name='Levels')+
+  ylim(25,50)+xlim(-126,-66)+
+  ggtitle('Levels in Failed Campaigns')+
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.justification='bottom',
+        plot.margin=unit(c(-0.5,0,0.5,1.25),"cm"))
+
+difference_map <- ggplot() +
+  geom_polygon(data = difference_level_long_lat, aes(x=long, y=lat, group=group, fill=levels_difference))+
+  borders('state')+
+  scale_fill_gradient(low='white',high='red','Difference')+
+  ylim(25,50)+xlim(-126,-66)+
+  ggtitle('Level Difference: Successful - Failed')+
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.justification='bottom',
+        plot.margin=unit(c(0,3.5,0.5,3.5),"cm"))
+
+g1 <- ggplotGrob(success_map)
+g2 <- ggplotGrob(fail_map)
+g3 <- ggplotGrob(difference_map)
+
+grid.newpage()
+grid.arrange(arrangeGrob(g1,g2,ncol=2),g3)
+## Draw minus
+grid.lines(x = c(0.475,0.52), y = c(0.77,0.77), gp = gpar(lwd=7,lineend='square'))
+## Draw equals
+grid.lines(x = c(0.04,0.10), y = c(0.290,0.290), gp = gpar(lwd=7,lineend='square'))
+grid.lines(x = c(0.04,0.10), y = c(0.230,0.230), gp = gpar(lwd=7,lineend='square'))
+
+par(oldpar)
+```
+
+# Language Processing
+
+## Language Processing w/ Shiny
+```{r, echo=FALSE}
+## Note: Need to run application in text_application/app folder before this will work
+knitr::include_app('http://127.0.0.1:6535')
+```
+
+## Language Processing: Keywords
+* The word "first" can be found in the descriptions of:
+    * 5.6% of successful campaigns
+    * 3.4% of failed campaigns
+* These aren't huge numbers, it's a 65% increase from failed to successful and it is only one word
+* Exclamation marks can be found in the descriptions of:
+    * 26.7% of successful campaigns
+    * 21.8% of failed campaigns
+* Successful campaigns are 22% more likely to contain an exclamation mark
+* Overall, simply using a key word doesn't translate to campaign success
+
+# Community Interest: Comments
+
+## Violin Plot of Failure vs Success
+```{r, message=FALSE, echo=FALSE}
+success <- comment_table[comment_table$state == 'successful',]
+fail <- comment_table[comment_table$state == 'failed',]
+comment_table_success_fail <- as.data.frame(rbind(success, fail))
+
+## Compare means
+mean.success <- round(mean(success$comment_counts), digits=2)
+mean.fail <- round(mean(fail$comment_counts), digits=2)
+```
+
+<div style="margin-left:-40px; margin-top:-50px; width:80%; height:100%">
+```{r, echo=FALSE, fig.width=8, fig.height=6, fig.align='right'}
+## Compare percent of campaigns with no comments
+ggplot(comment_table_success_fail, aes(factor(state), comment_counts)) +
+  geom_violin(aes(fill = state)) +
+  ylim(0,10) +
+  labs(x = "States", y = "Number of Comments")+ 
+    theme(text = element_text(size=16))
+```
+
+## Comments and Campaigns 
+* Randomly selected 1000 campaigns 
+* Scraped campaign webpages for number of comments from users 
+* Average number of comments based on campaign success:
+    * __Successful__:  26.94 comments
+    * __Failed__:      0.94 comments
+* This suggests that a good campaign should induce the Kickstarter community to ask questions and foster discussion about the product.
+
+## Conclusion
+* What indicates whether a campaign will be successful or not?
+    * Categorical analysis
+        * Music  ...   Comics ... Publishing 
+    * Geographical analysis 
+        * Location doesn't matter 
+        * But more levels help
+    * Various words in the description
+          * First  ...  !  ...  Best
+    * Comments on the campaign's web page
+          * More comments = more likely to be successful 
+          
+# Questions?
+
+## Sources
+* https://help.kickstarter.com/hc/en-us/articles/115004996453-What-is-Kickstarter-
+
+
+
