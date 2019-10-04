@@ -1,6 +1,8 @@
 # Kickstarter-Analysis
 A statistical look at what makes a successful Kickstarter campaign.
 
+![Success by campaign category](categories.png)
+
 ## Background
 [Kickstarter](https://www.kickstarter.com) is a web-based crowdfunding platform that began in 2009. The platform allows people to create campaigns for their ideas with the hope that others will believe in the idea and fund their campaigns.
 
